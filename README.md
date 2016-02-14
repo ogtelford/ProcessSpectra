@@ -1,2 +1,3 @@
-# ProcessSpectra
-Code to process and analyze galaxy spectra from SDSS-II
+# specprep
+
+Tools to process galaxy spectra from SDSS-II
