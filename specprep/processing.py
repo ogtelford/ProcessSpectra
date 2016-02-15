@@ -4,6 +4,8 @@ Tools to process raw galaxy spectra from SDSS-II Legacy survey.
 Authored by Grace Telford 02/13/16
 """
 
+#TODO: add option to save to HDF5 file to the processing function
+
 from __future__ import absolute_import, print_function, division
 
 import numpy as np
@@ -12,6 +14,7 @@ import time
 import sys
 
 from .io import FitsData, get_local_params, get_galaxy_params
+
 
 class SpecProcessor(object):
     """
@@ -27,7 +30,7 @@ class SpecProcessor(object):
     --------
     >>>
     """
-    def __init__(self, Nsamples=5000, loglam_grid=None, files_list=None):
+    def __init__(self, Nsamples=5000, loglam_grid=None, spectrum_filenames_file=None):
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
@@ -35,22 +38,21 @@ class SpecProcessor(object):
             self.loglam_grid = 3.5 + 0.0001 * np.arange(Nsamples)
             self.Nsamples = Nsamples
 
-        if files_list:
-            self.files_list = files_list
+        if spectrum_filenames_file:
+            self.spectrum_filenames_file = spectrum_filenames_file
         else:
             try:
-                self.files_list = get_local_params()['spectrum_filenames_file']
+                self.spectrum_filenames_file = get_local_params()['spectrum_filenames_file']
             except KeyError:
-                sys.exit('Specify files_list in *kwargs or spectrum_filenames_file in local.cfg file')
+                sys.exit('Specify spectrum_filenames_file in *kwargs or in local.cfg file')
 
-        self.filenames = np.loadtxt(self.files_list, dtype=str)
+        self.filenames = np.loadtxt(self.spectrum_filenames_file, dtype=str)
         self.Nspectra = len(self.filenames)
 
         try:
             self.index_offset = get_local_params()['index_offset']
         except KeyError:
             self.index_offset = 0
-
 
     @staticmethod
     def k(wavelength, r_v=3.1):
@@ -81,14 +83,13 @@ class SpecProcessor(object):
             y ** 5) + 5.30260 * (y ** 6) - 2.09002 * (y ** 7)
         return a + b / r_v
 
-
     def deredden(self, log_wavelength, flux, ebv):
         """
         Correct flux at specified wavelength(s) for reddening using CCM 1989 extinction law.
 
         Parameters
         ----------
-        wavelength : float or array-like
+        log_wavelength : float or array-like
             Wavelength(s) at which to compute the reddening correction.
         flux : float or array-like
             Uncorrected flux(es).
@@ -103,10 +104,28 @@ class SpecProcessor(object):
 
         return flux * 10 ** (0.4 * self.k(10**log_wavelength) * ebv)
 
+    def normalize(self, spectra, weights):
+        """
+        Normalize the array of spectra to mean value of each spectrum between 4400 and 4450 A
 
-    def process_fits(self, missing_params=False):
+        Multiply inverse variances by the square of the normalization
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        """
+        norm = np.mean(spectra[:, (10**self.loglam_grid > 4400.) * (10**self.loglam_grid < 4450.)], axis=1)
+        spectra /= norm[:, None]
+        weights *= norm[:, None] ** 2
+
+        return spectra, weights
+
+    def process_fits(self, normalize=False, missing_params=False, return_ID=False):
         """
         Iterate over all .fits filenames, read in and process spectra.
+
         Check that redshift in header matches redshift in parameters file.
         """
         start_time = time.time()
@@ -115,21 +134,23 @@ class SpecProcessor(object):
         weights = np.zeros((self.Nspectra, self.Nsamples))
         missing = []
         redshifts = []
+        plates = []
+        mjds = []
+        fibers = []
 
         galaxyparams = get_galaxy_params()
 
         for ind in np.arange(self.Nspectra):
             data = FitsData(self.filenames[ind])
 
-            #z = data.z
-            #fluxes = data.fluxes
-            #wavelengths = data.wavelengths
-            #ivars = data.ivars
-            #andmask = data.andmask
-
             # sanity check
             #print("fits: ", data.z)
             #print("table: ", galaxyparams['Z'][ind + self.index_offset])
+
+            redshifts.append(data.z)
+            plates.append(data.plate)
+            mjds.append(data.mjd)
+            fibers.append(data.fiber)
 
             if missing_params:
                 # this code handles the case where there are more filenames than rows in table
@@ -160,15 +181,17 @@ class SpecProcessor(object):
                 current_time = time.time()
                 print('Time to index %d: %g' % (ind, current_time - start_time))
 
-            # Normalize the spectrum -- commenting out for now! Really want mean of 0 and variance of 1 for PCA
-            #norm = np.mean(spectra[:, (self.lam_grid > 4400.) * (self.lam_grid < 4450.)], axis=1)
-            #spectra /= norm[:, None]
-            #variances /= norm[:, None] ** 2
-
         keep = np.sum(spectra, axis=1) != 0
+
+        if normalize:
+            spectra, weights = self.normalize(spectra, weights)
 
         end_time = time.time()
         print('Total time:', end_time - start_time)
         print(missing)
 
-        return spectra[keep,:], weights[keep,:], missing
+        if return_ID:
+            ID_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
+            return spectra[keep,:], weights[keep,:], ID_dict, missing
+        else:
+            return spectra[keep,:], weights[keep,:]
