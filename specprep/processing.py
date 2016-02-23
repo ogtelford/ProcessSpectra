@@ -1,5 +1,5 @@
 """
-Tools to process raw galaxy spectra from SDSS-II Legacy survey.
+Tools to process galaxy spectra .fits files from SDSS-II Legacy survey.
 
 Authored by Grace Telford 02/13/16
 """
@@ -181,7 +181,10 @@ class SpecProcessor(object):
                 current_time = time.time()
                 print('Time to index %d: %g' % (ind, current_time - start_time))
 
+        # remove any rows where all fluxes are 0 -- this occurs when there are more spectra than rows in table
         keep = np.sum(spectra, axis=1) != 0
+        spectra = spectra[keep,:]
+        weights = weights[keep,:]
 
         if normalize:
             spectra, weights = self.normalize(spectra, weights)
@@ -192,6 +195,6 @@ class SpecProcessor(object):
 
         if return_ID:
             ID_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
-            return spectra[keep,:], weights[keep,:], ID_dict, missing
+            return spectra, weights, ID_dict, missing
         else:
-            return spectra[keep,:], weights[keep,:]
+            return spectra, weights
