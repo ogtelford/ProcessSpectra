@@ -4,12 +4,13 @@ Tools for reading and writing spectrum and parameter files.
 Authored by Grace Telford 02/13/16.
 """
 
-#TODO: add function to write a STARLIGHT input file
+#TODO: add functions to write a STARLIGHT input file
 
 from __future__ import absolute_import, print_function, division
 
 import numpy as np
 from astropy.io import fits
+from scipy import interp
 import h5py
 import sys
 
@@ -50,7 +51,7 @@ class FitsData(object):
         else:
             try:
                 self.spectra_directory = get_local_params()['spectra_directory']
-            except KeyError:
+            except (KeyError, IOError):
                 sys.exit('Specify spectra_directory in *kwargs or in local.cfg file')
 
         self.filename = filename
@@ -91,7 +92,7 @@ def get_galaxy_params(galaxy_parameters_file=None, columns=(2,3,4,5,7), indices=
     if galaxy_parameters_file is None:
         try:
             galaxy_parameters_file = get_local_params()['galaxy_parameters_file']
-        except KeyError:
+        except (KeyError, IOError):
             sys.exit('Specify galaxy_parameters_file in *kwargs or in local.cfg file')
 
     if columns:
@@ -128,7 +129,10 @@ def save_spectra_hdf5(loglam_grid, spectra, weights, output_filename=None, datas
     dataset_dict:
     """
     if output_filename is None:
-        output_filename=get_local_params()['output_filename']
+        try:
+            output_filename=get_local_params()['output_filename']
+        except (KeyError, IOError):
+            sys.exit('Specify output_filename in *kwargs or in local.cfg file')
 
     f = h5py.File(output_filename, 'w')
 
@@ -154,7 +158,7 @@ def read_spectra_hdf5(filename=None):
     if filename is None:
         try:
             filename=get_local_params()['output_filename']
-        except KeyError:
+        except (KeyError, IOError):
             sys.exit('Specify filename in *kwargs or in or output_filename in local.cfg file')
 
     try:
@@ -163,3 +167,39 @@ def read_spectra_hdf5(filename=None):
         sys.exit('Invalid filename')
 
     return f
+
+
+def save_spectrum_starlight(loglam_grid, spectrum, errors, minlam=3700, maxlam=8200, flags=None, output_filename=None):
+    """
+    Save arrays of wavelengths, spectra, and weights to a text file formatted for use with STARLIGHT.
+
+    Can specify output_filename in local.cfg file in pwd or in *kwargs.
+    NB: STARLIGHT requires uniform, 1 angstrom spacing of wavelengths! Need to resample arrays here.
+
+    Parameters
+    ----------
+    loglam_grid:
+    spectrum:
+    weights:
+    minlam:
+    maxlam:
+
+    output_filename:
+    """
+    if output_filename is None:
+        try:
+            output_filename=get_local_params()['output_filename']
+        except (KeyError, IOError):
+            sys.exit('Specify output_filename in *kwargs or in local.cfg file')
+
+    # interpolate spectrum, errors, and flags (f > 1 == bad pixel) to linear wavelength grid
+    lam_grid = np.arange(minlam, maxlam, 1.)
+
+    specData = np.zeros((len(lam_grid), 4))
+    specData[:,0] = lam_grid
+    specData[:,1] = interp(lam_grid, 10**loglam_grid, spectrum, left=0., right=0.)
+    specData[:,2] = interp(lam_grid, 10**loglam_grid, errors, left=0., right=0.)
+    if flags is not None:
+        specData[:,3] = interp(lam_grid, 10**loglam_grid, flags, left=0., right=0.)
+
+    np.savetxt(output_filename, specData)

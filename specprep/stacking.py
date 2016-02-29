@@ -4,13 +4,12 @@ Tools to bin and stack galaxy spectra.
 Authored by Grace Telford 02/22/16
 """
 
-# TODO: Handle case of using chunks of larger table w/ index_offset
-
 from __future__ import absolute_import, print_function, division
 
 import numpy as np
 import sys
-from .io import get_local_params, get_galaxy_params
+from .io import get_local_params, get_galaxy_params, save_spectrum_starlight
+from .processing import SpecProcessor
 
 
 class SpecStacker(object):
@@ -27,7 +26,10 @@ class SpecStacker(object):
     --------
     >>>
     """
-    def __init__(self, selection_dict=None, columns=None, indices=None):
+    def __init__(self, selection_dict=None, columns=None):
+
+        self.galaxy_params = get_galaxy_params(columns=columns)
+
         self.names = []
         self.mins = []
         self.maxs = []
@@ -37,17 +39,93 @@ class SpecStacker(object):
                 self.mins.append(selection_dict[name][0])
                 self.maxs.append(selection_dict[name][1])
 
-        self.columns = columns
-        self.indices = indices
-
-        self.galaxy_params = get_galaxy_params(columns=self.columns, indices=self.indices)
-
-    def get_selection_indices(self):
-
         keep = np.ones(len(self.galaxy_params), dtype=bool)
 
         for ind in range(len(self.names)):
             keep *= (self.galaxy_params[self.names[ind]] < self.maxs[ind]) * \
                     (self.galaxy_params[self.names[ind]] > self.mins[ind])
 
-        return keep
+        self.stack_inds = np.where(keep > 0)[0]
+
+        self.galaxy_params = self.galaxy_params[self.stack_inds]
+        self.Nspectra = len(self.galaxy_params)
+
+    def get_stacked_spectrum(self, spec_array=None, weights_array=None, method='mean', err_method='rms', \
+                             mcmc_samples=100):
+        """
+        Calculate mean or median stack of spectra.
+
+        Parameters
+        ----------
+        spectra : ndarray
+            An N_spectra x N_wavelengths array containing all spectra interpolated to common,
+            de-redshifted wavelength grid.
+        method : string (default='mean')
+            Method of stacking. Must be either 'mean' or 'median'
+        plot : boolean (default=True)
+
+        Returns
+        -------
+        stack
+        """
+
+        # Get array of spectra and weights (ivars)
+        if spec_array:
+            wavelengths = None
+            spectra = spec_array
+            weights = weights_array
+        else:
+            sp = SpecProcessor()
+            spectra, weights = sp.process_fits(indices=self.stack_inds, normalize=True)
+            wavelengths = 10 ** sp.loglam_grid
+            keep = (wavelengths > 3700) * (wavelengths < 8400)
+            wavelengths = wavelengths[keep]
+            spectra = spectra[:,keep]
+            weights = weights[:,keep]
+
+        # check for number of spectra with masked pixels at each wavelength
+        #frac_masked = (weights==0).mean(0)
+
+        # Perform stacking of spectra
+        spectra[spectra == 0] = np.nan
+
+        if method == 'mean':
+            stack = np.nanmean(spectra, axis=0)
+
+        elif method == 'median':
+            stack = np.nanmedian(spectra, axis=0)
+
+        else:
+            sys.exit('method keyword must be either "mean" or "median"')
+
+        # Calculate uncertainties on each pixel in stacked spectrum
+        # NB -- THIS IS UNDER DEVELOPMENT; current method of using nans to ignore pixels with no data isn't great...
+        if err_method == 'rms':
+            errs = np.sqrt(np.nansum((spectra - stack) ** 2, axis=0) / self.Nspectra)
+
+        elif err_method == 'mcmc':
+            sigmas = 1. / np.sqrt(weights)
+            sigmas[np.isinf(sigmas)] = 10. # better way to choose this value??
+
+            resampled_stacks = np.zeros((mcmc_samples, len(wavelengths)))
+
+            for samp in range(mcmc_samples):
+                resampled = np.zeros(np.shape(spectra))
+
+                for ii in range(self.Nspectra):
+                    for jj in range(len(wavelengths)):
+                        resampled[ii,jj] = np.random.normal(loc=spectra[ii,jj], scale=sigmas[ii,jj])
+
+                resampled_stacks[samp,:] = np.nanmean(resampled, axis=0)
+
+            errs = np.nanstd(resampled_stacks, axis=0)
+
+
+        else:
+            sys.exit('err_method keyword must be either "rms" or "mcmc"')
+
+
+        if wavelengths is not None:
+            return wavelengths, stack, errs
+        else:
+            return stack, errs

@@ -43,7 +43,7 @@ class SpecProcessor(object):
         else:
             try:
                 self.spectrum_filenames_file = get_local_params()['spectrum_filenames_file']
-            except KeyError:
+            except (KeyError, IOError):
                 sys.exit('Specify spectrum_filenames_file in *kwargs or in local.cfg file')
 
         self.filenames = np.loadtxt(self.spectrum_filenames_file, dtype=str)
@@ -51,7 +51,7 @@ class SpecProcessor(object):
 
         try:
             self.index_offset = get_local_params()['index_offset']
-        except KeyError:
+        except (KeyError, IOError):
             self.index_offset = 0
 
     @staticmethod
@@ -122,13 +122,14 @@ class SpecProcessor(object):
 
         return spectra, weights
 
-    def process_fits(self, normalize=False, missing_params=False, return_ID=False):
+    def process_fits(self, normalize=False, mask=False, indices=None, missing_params=False, missing_spec=False, return_ID=False):
         """
         Iterate over all .fits filenames, read in and process spectra.
 
         Check that redshift in header matches redshift in parameters file.
         """
         start_time = time.time()
+        counter = 0
 
         spectra = np.zeros((self.Nspectra, self.Nsamples))
         weights = np.zeros((self.Nspectra, self.Nsamples))
@@ -140,7 +141,12 @@ class SpecProcessor(object):
 
         galaxyparams = get_galaxy_params()
 
-        for ind in np.arange(self.Nspectra):
+        if indices is not None:
+            index_list = indices
+        else:
+            index_list = np.arange(self.Nspectra)
+
+        for ind in index_list:
             data = FitsData(self.filenames[ind])
 
             # sanity check
@@ -157,31 +163,37 @@ class SpecProcessor(object):
                 if galaxyparams['Z'][ind + self.index_offset] != data.z:
                     self.index_offset -= 1
                     continue
-            else:
+
+            if missing_spec:
                 # this code handles the case where there are more rows in the table than filenames
                 while galaxyparams['Z'][ind + self.index_offset] != data.z:
                     print("Galaxy %d missing" % (ind + self.index_offset))
                     missing.append(ind + self.index_offset)
                     self.index_offset += 1
-                    if self.index_offset > 10:
+                    if self.index_offset > 1e6:
                         break
+
+            if mask:
+                data.ivars[data.andmask > 0] = np.nan
 
             # Shift to restframe, apply mask, correct for reddening
             loglam = np.log10(data.wavelengths / (1. + data.z))
-            data.ivars[data.andmask > 0] = np.nan
             ebv = galaxyparams['EBV'][ind + self.index_offset]
             data.fluxes = self.deredden(loglam, data.fluxes, ebv)
 
-            # Interpolate spectrum/ivars & resample to common grid; set all NaNs in ivar array to very small ivar
+            # Interpolate spectrum/ivars & resample to common grid; set all NaNs in ivar array to 0 (masked)
             spectra[ind, :] = interp(self.loglam_grid, loglam, data.fluxes, left=0., right=0.)
             weights[ind, :] = interp(self.loglam_grid, loglam, data.ivars, left=0., right=0.)
             weights[ind, np.isnan(weights[ind,:])] = 0.
 
-            if ind % 10 == 0:
+            # Progress report
+            if counter % 10 == 0:
                 current_time = time.time()
-                print('Time to index %d: %g' % (ind, current_time - start_time))
+                print('Time to iteration %d: %g' % (counter, current_time - start_time))
 
-        # remove any rows where all fluxes are 0 -- this occurs when there are more spectra than rows in table
+            counter += 1
+
+        # Remove any rows where all fluxes are 0 -- this occurs when there are more spectra than rows in table
         keep = np.sum(spectra, axis=1) != 0
         spectra = spectra[keep,:]
         weights = weights[keep,:]
@@ -191,7 +203,6 @@ class SpecProcessor(object):
 
         end_time = time.time()
         print('Total time:', end_time - start_time)
-        print(missing)
 
         if return_ID:
             ID_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
