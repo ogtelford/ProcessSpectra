@@ -57,7 +57,7 @@ class FitsData(object):
         self.filename = filename
 
         try:
-            fitsfile = fits.open(self.spectra_directory + self.filename)
+            fitsfile = fits.open(self.spectra_directory + self.filename, memmap=False)
         except IOError:
             sys.exit('Invalid filename or spectra directory')
 
@@ -71,7 +71,6 @@ class FitsData(object):
         self.andmask = fitsfile[1].data['and_mask']
 
         fitsfile.close()
-
 
 def get_galaxy_params(galaxy_parameters_file=None, columns=(2,3,4,5,7), indices=None):
     """
