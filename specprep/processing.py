@@ -15,7 +15,7 @@ from scipy import interp
 import time
 import sys
 
-from .io import FitsData, get_local_params, get_galaxy_params
+from .io import FitsData, get_galaxy_params, read_filenames
 
 
 class SpecProcessor(object):
@@ -32,7 +32,7 @@ class SpecProcessor(object):
     --------
     >>>
     """
-    def __init__(self, Nsamples=5000, loglam_grid=None, spectrum_filenames_file=None, gen_filenames=False):
+    def __init__(self, Nsamples=5000, loglam_grid=None, filenames=None, spectrum_filenames_file=None):
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
@@ -40,23 +40,18 @@ class SpecProcessor(object):
             self.loglam_grid = 3.5 + 0.0001 * np.arange(Nsamples)
             self.Nsamples = Nsamples
 
-        if not gen_filenames:
-            if spectrum_filenames_file:
-                self.spectrum_filenames_file = spectrum_filenames_file
-            else:
-                try:
-                    self.spectrum_filenames_file = get_local_params()['spectrum_filenames_file']
-                except (KeyError, IOError):
-                    sys.exit('Specify spectrum_filenames_file in *kwargs or in local.cfg file')
+        # IS THERE A CLEANER WAY TO HANDLE THESE TWO POSSIBILITIES?
 
-            self.filenames = np.loadtxt(self.spectrum_filenames_file, dtype=str)
+        if spectrum_filenames_file:
+            try:
+                self.filenames = read_filenames(spectrum_filenames_file)
+            except IOError:
+                sys.exit('spectrum_filenames_file is invalid')
+
+        if filenames is not None:
+            self.filenames = filenames
 
         self.Nspectra = len(self.filenames)
-
-        try:
-            self.index_offset = get_local_params()['index_offset']
-        except (KeyError, IOError):
-            self.index_offset = 0
 
     @staticmethod
     def k(wavelength, r_v=3.1):
@@ -116,9 +111,13 @@ class SpecProcessor(object):
 
         Parameters
         ----------
+        spectra:
+        weights:
 
         Returns
         -------
+        spectra:
+        weights:
         """
         norm = np.mean(spectra[:, (10**self.loglam_grid > 4400.) * (10**self.loglam_grid < 4450.)], axis=1)
         spectra /= norm[:, None]
@@ -126,7 +125,7 @@ class SpecProcessor(object):
 
         return spectra, weights
 
-    def process_fits(self, normalize=False, mask=False, indices=None, missing_params=False, missing_spec=False, return_ID=False):
+    def process_fits(self, normalize=False, mask=False, indices=None, return_id=False):
         """
         Iterate over all .fits filenames, read in and process spectra.
 
@@ -137,7 +136,7 @@ class SpecProcessor(object):
 
         spectra = np.zeros((self.Nspectra, self.Nsamples))
         weights = np.zeros((self.Nspectra, self.Nsamples))
-        missing = []
+
         redshifts = []
         plates = []
         mjds = []
@@ -153,36 +152,17 @@ class SpecProcessor(object):
         for ind in index_list:
             data = FitsData(self.filenames[ind])
 
-            # sanity check
-            #print("fits: ", data.z)
-            #print("table: ", galaxyparams['Z'][ind + self.index_offset])
-
             redshifts.append(data.z)
             plates.append(data.plate)
             mjds.append(data.mjd)
             fibers.append(data.fiber)
-
-            if missing_params:
-                # this code handles the case where there are more filenames than rows in table
-                if galaxyparams['Z'][ind + self.index_offset] != data.z:
-                    self.index_offset -= 1
-                    continue
-
-            if missing_spec:
-                # this code handles the case where there are more rows in the table than filenames
-                while galaxyparams['Z'][ind + self.index_offset] != data.z:
-                    print("Galaxy %d missing" % (ind + self.index_offset))
-                    missing.append(ind + self.index_offset)
-                    self.index_offset += 1
-                    if self.index_offset > 1e6:
-                        break
 
             if mask:
                 data.ivars[data.andmask > 0] = np.nan
 
             # Shift to restframe, apply mask, correct for reddening
             loglam = np.log10(data.wavelengths / (1. + data.z))
-            ebv = galaxyparams['EBV'][ind + self.index_offset]
+            ebv = galaxyparams['EBV'][ind]
             data.fluxes = self.deredden(loglam, data.fluxes, ebv)
 
             # Interpolate spectrum/ivars & resample to common grid; set all NaNs in ivar array to 0 (masked)
@@ -197,19 +177,14 @@ class SpecProcessor(object):
 
             counter += 1
 
-        # Remove any rows where all fluxes are 0 -- this occurs when there are more spectra than rows in table
-        keep = np.sum(spectra, axis=1) != 0
-        spectra = spectra[keep,:]
-        weights = weights[keep,:]
-
         if normalize:
             spectra, weights = self.normalize(spectra, weights)
 
         end_time = time.time()
         print('Total time:', end_time - start_time)
 
-        if return_ID:
+        if return_id:
             ID_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
-            return spectra, weights, ID_dict, missing
+            return spectra, weights, ID_dict
         else:
             return spectra, weights

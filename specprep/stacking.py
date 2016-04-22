@@ -8,7 +8,7 @@ from __future__ import absolute_import, print_function, division
 
 import numpy as np
 import sys
-from .io import get_local_params, get_galaxy_params, save_spectrum_starlight
+from .io import get_galaxy_params, make_files_list
 from .processing import SpecProcessor
 
 
@@ -50,17 +50,8 @@ class SpecStacker(object):
         self.galaxy_params = self.galaxy_params[self.stack_inds]
         self.Nspectra = len(self.galaxy_params)
 
-    def make_files_list(self):
-        filenames = []
-        for ii in self.stack_inds:
-            filenames.append('spec-%04d-%05d-%04d.fits' % (self.galaxy_params['PLATEID'][ii],
-                                                           self.galaxy_params['MJD'][ii],
-                                                           self.galaxy_params['FIBER'][ii]))
-
-        return filenames
-
     def get_stacked_spectrum(self, spec_array=None, weights_array=None, method='mean', err_method='rms', \
-                             mcmc_samples=100, missing_params=False, missing_spec=False, spec_filenames_file=None):
+                             mcmc_samples=100, spec_filenames_file=None, filenames=None):
         """
         Calculate mean or median stack of spectra.
 
@@ -78,15 +69,17 @@ class SpecStacker(object):
         stack
         """
 
+        if spec_filenames_file is None:
+            filenames = make_files_list(self.galaxy_params, self.stack_inds)
+
         # Get array of spectra and weights (ivars)
         if spec_array:
             wavelengths = None
             spectra = spec_array
             weights = weights_array
         else:
-            sp = SpecProcessor(spectrum_filenames_file=spec_filenames_file)
-            spectra, weights = sp.process_fits(indices=self.stack_inds, normalize=True,
-                                               missing_params=missing_params, missing_spec=missing_spec)
+            sp = SpecProcessor(spectrum_filenames_file=spec_filenames_file, filenames=filenames)
+            spectra, weights = sp.process_fits(indices=self.stack_inds, normalize=True)
             wavelengths = 10 ** sp.loglam_grid
             keep = (wavelengths > 3700) * (wavelengths < 8400)
             wavelengths = wavelengths[keep]

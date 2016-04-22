@@ -4,8 +4,6 @@ Tools for reading and writing spectrum and parameter files.
 Authored by Grace Telford 02/13/16.
 """
 
-#TODO: add functions to write a STARLIGHT input file
-
 from __future__ import absolute_import, print_function, division
 
 import numpy as np
@@ -13,25 +11,6 @@ from astropy.io import fits
 from scipy import interp
 import h5py
 import sys
-
-
-def get_local_params():
-    """
-    Read local parameters from local.cfg file in the pwd.
-    Each line contains a parameter name followed by ": " and the parameter.
-
-    Returns
-    -------
-    """
-    local_params = {}
-    with open('local.cfg') as f:
-        for raw_line in f:
-            parsed_line = raw_line.strip().split(': ')
-            if len(parsed_line) == 2:
-                param_name, param_value = parsed_line
-                local_params[param_name] = param_value
-    return local_params
-
 
 class FitsData(object):
     """
@@ -44,15 +23,12 @@ class FitsData(object):
     Returns
     -------
     """
-    def __init__(self, filename, spectra_directory=None):
+    def __init__(self, filename,
+                 spectra_directory='/Users/ogtelford/Documents/UW/Research/StackingSpectra/data/M9.8_SFR0/'):
         if spectra_directory:
             self.spectra_directory = spectra_directory
-
         else:
-            try:
-                self.spectra_directory = get_local_params()['spectra_directory']
-            except (KeyError, IOError):
-                sys.exit('Specify spectra_directory in *kwargs or in local.cfg file')
+            sys.exit('Specify spectra_directory in *kwargs')
 
         self.filename = filename
 
@@ -72,27 +48,26 @@ class FitsData(object):
 
         fitsfile.close()
 
-def get_galaxy_params(galaxy_parameters_file=None, columns=(2,3,4,5,7), indices=None):
+
+def get_galaxy_params(galaxy_parameters_file='/Users/ogtelford/Documents/UW/Research/StackingSpectra/\
+                            code/data_M9.8_SFR0.csv', columns=None, indices=None):
     """
     Read in a table of parameters
 
     Parameters
     ----------
     galaxy_parameters_file: str
+        Specify the file containing galaxy parameters. Must include Plate/MJD/Fiber for each galaxy.
     columns: tuple
-        Column numbers to read in. Default is (2,3,4,5,7), corresponding to
-        ('PLATEID', 'MJD', 'FIBER', 'Z', 'EBV') assuming that galaxy_parameters_file was generated
-        by the notebook galaxyData.ipynb within the /Research/ManifoldLearning/code directory
+        Optional. Specify a subset of columns to read. Default None reads in all columns.
     indices: int, list, or ndarray
+        Optional. Specify rows of parameters table to read in. Default None reads in all rows.
 
     Returns
     -------
     """
     if galaxy_parameters_file is None:
-        try:
-            galaxy_parameters_file = get_local_params()['galaxy_parameters_file']
-        except (KeyError, IOError):
-            sys.exit('Specify galaxy_parameters_file in *kwargs or in local.cfg file')
+        sys.exit('Specify galaxy_parameters_file in *kwargs')
 
     if columns:
         try:
@@ -110,32 +85,46 @@ def get_galaxy_params(galaxy_parameters_file=None, columns=(2,3,4,5,7), indices=
     else:
         return galaxyparams
 
+def read_filenames(spectrum_filenames_file):
+    """
+    Simple function to return an array of spectrum filenames from a file.
 
-def save_spectra_hdf5(loglam_grid, spectra, weights, output_filename=None, dataset_dict=None):
+    NB: must be the same number of filenames as spectra you wish to stack!
+    """
+    return np.loadtxt(spectrum_filenames_file, dtype=str)
+
+
+def make_files_list(galaxy_params, indices):
+    filenames = []
+    for ii in indices:
+        filenames.append('spec-%04d-%05d-%04d.fits' % (galaxy_params['PLATEID'][ii],
+                                                       galaxy_params['MJD'][ii],
+                                                       galaxy_params['FIBER'][ii]))
+
+    return filenames
+
+def save_spectra_hdf5(wavelength_grid, spectra, weights, output_filename='spectra.hdf5', dataset_dict=None):
     """
     Save arrays of wavelengths, spectra, and weights to an HDF5 file.
+    Must specify output_filename in *kwargs.
 
-    Can specify output_filename in local.cfg file in pwd or in *kwargs.
     Can specify additional dataset names and data using the dataset_dict keyword.
     Useful for storing identifying information for spectra.
 
     Parameters
     ----------
-    loglam_grid:
+    wavelength_grid:
     spectra:
     weights:
     output_filename:
     dataset_dict:
     """
     if output_filename is None:
-        try:
-            output_filename=get_local_params()['output_filename']
-        except (KeyError, IOError):
-            sys.exit('Specify output_filename in *kwargs or in local.cfg file')
+        sys.exit('Specify output_filename in *kwargs')
 
     f = h5py.File(output_filename, 'w')
 
-    f.create_dataset('log_wavelengths', data=loglam_grid)
+    f.create_dataset('wavelengths', data=wavelength_grid)
     f.create_dataset('spectra', data=spectra)
     f.create_dataset('ivars', data=weights)
 
@@ -148,17 +137,19 @@ def save_spectra_hdf5(loglam_grid, spectra, weights, output_filename=None, datas
 
 def read_spectra_hdf5(filename=None):
     """
-    Read data saved in HDF5 format
+    Read data saved in HDF5 format.
 
     Parameters
     ----------
-    filename:
+    filename: str
+        Name of HDF5 file that contains the spectra.
+
+    Returns
+    -------
+    f:
     """
     if filename is None:
-        try:
-            filename=get_local_params()['output_filename']
-        except (KeyError, IOError):
-            sys.exit('Specify filename in *kwargs or in or output_filename in local.cfg file')
+        sys.exit('Specify filename in *kwargs or in or output_filename in local.cfg file')
 
     try:
         f = h5py.File(filename,'r')
@@ -168,7 +159,8 @@ def read_spectra_hdf5(filename=None):
     return f
 
 
-def save_spectrum_starlight(loglam_grid, spectrum, errors, minlam=3700, maxlam=8200, flags=None, output_filename=None):
+def save_spectrum_starlight(wavelength_grid, spectrum, errors, minlam=3700, maxlam=8200, flags=None,
+                            output_filename='spectrum_starlight.txt'):
     """
     Save arrays of wavelengths, spectra, and weights to a text file formatted for use with STARLIGHT.
 
@@ -177,28 +169,25 @@ def save_spectrum_starlight(loglam_grid, spectrum, errors, minlam=3700, maxlam=8
 
     Parameters
     ----------
-    loglam_grid:
+    wavelength_grid:
     spectrum:
     weights:
     minlam:
     maxlam:
-
+    flags:
     output_filename:
     """
     if output_filename is None:
-        try:
-            output_filename=get_local_params()['output_filename']
-        except (KeyError, IOError):
-            sys.exit('Specify output_filename in *kwargs or in local.cfg file')
+        sys.exit('Specify output_filename in *kwargs or in local.cfg file')
 
     # interpolate spectrum, errors, and flags (f > 1 == bad pixel) to linear wavelength grid
     lam_grid = np.arange(minlam, maxlam, 1.)
 
     specData = np.zeros((len(lam_grid), 4))
     specData[:,0] = lam_grid
-    specData[:,1] = interp(lam_grid, 10**loglam_grid, spectrum, left=0., right=0.)
-    specData[:,2] = interp(lam_grid, 10**loglam_grid, errors, left=0., right=0.)
+    specData[:,1] = interp(lam_grid, wavelength_grid, spectrum, left=0., right=0.)
+    specData[:,2] = interp(lam_grid, wavelength_grid, errors, left=0., right=0.)
     if flags is not None:
-        specData[:,3] = interp(lam_grid, 10**loglam_grid, flags, left=0., right=0.)
+        specData[:,3] = interp(lam_grid, wavelength_grid, flags, left=0., right=0.)
 
     np.savetxt(output_filename, specData)
