@@ -5,6 +5,8 @@ Authored by Grace Telford 02/13/16
 """
 
 #TODO: add option to save to HDF5 file to the processing function
+#TODO: this setup only works when number of filenames == length of galaxy_params -- fix this
+# I think this will work better if I just generate the filenames in the loop...
 
 from __future__ import absolute_import, print_function, division
 
@@ -30,7 +32,7 @@ class SpecProcessor(object):
     --------
     >>>
     """
-    def __init__(self, Nsamples=5000, loglam_grid=None, spectrum_filenames_file=None):
+    def __init__(self, Nsamples=5000, loglam_grid=None, spectrum_filenames_file=None, gen_filenames=False):
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
@@ -38,15 +40,17 @@ class SpecProcessor(object):
             self.loglam_grid = 3.5 + 0.0001 * np.arange(Nsamples)
             self.Nsamples = Nsamples
 
-        if spectrum_filenames_file:
-            self.spectrum_filenames_file = spectrum_filenames_file
-        else:
-            try:
-                self.spectrum_filenames_file = get_local_params()['spectrum_filenames_file']
-            except (KeyError, IOError):
-                sys.exit('Specify spectrum_filenames_file in *kwargs or in local.cfg file')
+        if not gen_filenames:
+            if spectrum_filenames_file:
+                self.spectrum_filenames_file = spectrum_filenames_file
+            else:
+                try:
+                    self.spectrum_filenames_file = get_local_params()['spectrum_filenames_file']
+                except (KeyError, IOError):
+                    sys.exit('Specify spectrum_filenames_file in *kwargs or in local.cfg file')
 
-        self.filenames = np.loadtxt(self.spectrum_filenames_file, dtype=str)
+            self.filenames = np.loadtxt(self.spectrum_filenames_file, dtype=str)
+
         self.Nspectra = len(self.filenames)
 
         try:
