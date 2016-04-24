@@ -4,9 +4,7 @@ Tools to process galaxy spectra .fits files from SDSS-II Legacy survey.
 Authored by Grace Telford 02/13/16
 """
 
-#TODO: add option to save to HDF5 file to the processing function
-#TODO: this setup only works when number of filenames == length of galaxy_params -- fix this
-# I think this will work better if I just generate the filenames in the loop...
+# TODO: add option to save to HDF5 file to the processing function
 
 from __future__ import absolute_import, print_function, division
 
@@ -22,23 +20,28 @@ class SpecProcessor(object):
     """
     Perform basic processing of raw spectra.
 
-    Parameters
+    Attributes
     ----------
-
-    Returns
-    -------
-
-    Examples
-    --------
-    >>>
+    loglam_grid: ndarray
+    Nsamples: integer
+    galaxy_params: numpy record array
+    filenames: string, list, or ndarray
+    Nspectra: integer
     """
-    def __init__(self, Nsamples=5000, loglam_grid=None, filenames=None, spectrum_filenames_file=None):
+
+    def __init__(self, n_samples=5000, loglam_grid=None, galaxy_params=None,
+                 filenames=None, spectrum_filenames_file=None):
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
         else:
-            self.loglam_grid = 3.5 + 0.0001 * np.arange(Nsamples)
-            self.Nsamples = Nsamples
+            self.loglam_grid = 3.5 + 0.0001 * np.arange(n_samples)
+            self.Nsamples = n_samples
+
+        if galaxy_params:
+            self.galaxy_params = galaxy_params
+        else:
+            self.galaxy_params = get_galaxy_params()
 
         # IS THERE A CLEANER WAY TO HANDLE THESE TWO POSSIBILITIES?
 
@@ -56,18 +59,18 @@ class SpecProcessor(object):
     @staticmethod
     def k(wavelength, r_v=3.1):
         """
-        Return A_wavelength/A_V using CCM 1989 extincton law.
+        Calculate A_wavelength/A_V using CCM 1989 extincton law.
 
         Parameters
         ----------
-        wavelength : float or array-like
+        wavelength : float or ndarray
             Wavelength(s) at which to compute the reddening correction.
         r_v : float (default=3.1)
             R_V value assumed in reddening law.
 
         Returns
         -------
-        k : float or array-like
+        k : float or ndarray
             Value(s) of k(lambda) at the specified wavelength(s).
         """
 
@@ -88,20 +91,20 @@ class SpecProcessor(object):
 
         Parameters
         ----------
-        log_wavelength : float or array-like
+        log_wavelength: float or ndarray
             Wavelength(s) at which to compute the reddening correction.
-        flux : float or array-like
+        flux: float or array-like
             Uncorrected flux(es).
-        ebv : float
+        ebv: float
             Value of E(B-V).
 
         Returns
         -------
-        flux_corr : float or array-like
+        flux_corr: float or ndarray
             Flux(es) corrected for reddening.
         """
 
-        return flux * 10 ** (0.4 * self.k(10**log_wavelength) * ebv)
+        return flux * 10 ** (0.4 * self.k(10 ** log_wavelength) * ebv)
 
     def normalize(self, spectra, weights):
         """
@@ -111,15 +114,15 @@ class SpecProcessor(object):
 
         Parameters
         ----------
-        spectra:
-        weights:
+        spectra: ndarray
+        weights: ndarray
 
         Returns
         -------
-        spectra:
-        weights:
+        spectra: ndarray
+        weights: ndarray
         """
-        norm = np.mean(spectra[:, (10**self.loglam_grid > 4400.) * (10**self.loglam_grid < 4450.)], axis=1)
+        norm = np.mean(spectra[:, (10 ** self.loglam_grid > 4400.) * (10 ** self.loglam_grid < 4450.)], axis=1)
         spectra /= norm[:, None]
         weights *= norm[:, None] ** 2
 
@@ -130,6 +133,19 @@ class SpecProcessor(object):
         Iterate over all .fits filenames, read in and process spectra.
 
         Check that redshift in header matches redshift in parameters file.
+
+        Parameters
+        ----------
+        normalize: boolean (default=False)
+        mask: boolean (default=False)
+        indices: integer, list, or ndarray (default=None)
+        return_id: boolean (default=False)
+        Returns
+        -------
+        spectra: ndarray
+        weights: ndarray
+        id_dict: dictionary
+            Optional.
         """
         start_time = time.time()
         counter = 0
@@ -141,8 +157,6 @@ class SpecProcessor(object):
         plates = []
         mjds = []
         fibers = []
-
-        galaxyparams = get_galaxy_params()
 
         if indices is not None:
             index_list = indices
@@ -162,13 +176,13 @@ class SpecProcessor(object):
 
             # Shift to restframe, apply mask, correct for reddening
             loglam = np.log10(data.wavelengths / (1. + data.z))
-            ebv = galaxyparams['EBV'][ind]
+            ebv = self.galaxy_params['EBV'][ind]
             data.fluxes = self.deredden(loglam, data.fluxes, ebv)
 
             # Interpolate spectrum/ivars & resample to common grid; set all NaNs in ivar array to 0 (masked)
             spectra[ind, :] = interp(self.loglam_grid, loglam, data.fluxes, left=0., right=0.)
             weights[ind, :] = interp(self.loglam_grid, loglam, data.ivars, left=0., right=0.)
-            weights[ind, np.isnan(weights[ind,:])] = 0.
+            weights[ind, np.isnan(weights[ind, :])] = 0.
 
             # Progress report
             if counter % 10 == 0:
@@ -184,7 +198,7 @@ class SpecProcessor(object):
         print('Total time:', end_time - start_time)
 
         if return_id:
-            ID_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
-            return spectra, weights, ID_dict
+            id_dict = {'redshifts': redshifts, 'plates': plates, 'mjds': mjds, 'fibers': fibers}
+            return spectra, weights, id_dict
         else:
             return spectra, weights
