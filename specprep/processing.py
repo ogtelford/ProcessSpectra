@@ -31,7 +31,7 @@ class SpecProcessor(object):
     Nspectra: integer
     """
 
-    def __init__(self, n_samples=5000, loglam_grid=None, galaxy_params=None,
+    def __init__(self, n_samples=5000, loglam_grid=None, galaxy_parameters_file=None,
                  filenames=None, spectrum_filenames_file=None, spectra_directory=None):
         if loglam_grid:
             self.loglam_grid = loglam_grid
@@ -40,8 +40,8 @@ class SpecProcessor(object):
             self.loglam_grid = 3.5 + 0.0001 * np.arange(n_samples)
             self.Nsamples = n_samples
 
-        if galaxy_params:
-            self.galaxy_params = galaxy_params
+        if galaxy_parameters_file:
+            self.galaxy_params = get_galaxy_params(galaxy_parameters_file=galaxy_parameters_file)
         else:
             self.galaxy_params = get_galaxy_params()
 
