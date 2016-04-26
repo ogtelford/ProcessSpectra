@@ -101,7 +101,8 @@ class SpecStacker(object):
             spectra = spec_array
             weights = weights_array
         else:
-            sp = SpecProcessor(spectrum_filenames_file=None, filenames=filenames, spectra_directory=self.spectra_directory)
+            sp = SpecProcessor(spectrum_filenames_file=None, filenames=filenames, galaxy_params=self.galaxy_params,
+                               spectra_directory=self.spectra_directory)
             spectra, weights = sp.process_fits(indices=None, normalize=True)
             wavelengths = 10 ** sp.loglam_grid
             keep = (wavelengths > 3700) * (wavelengths < 8200)
