@@ -40,7 +40,7 @@ class SpecProcessor(object):
             self.loglam_grid = 3.5 + 0.0001 * np.arange(n_samples)
             self.Nsamples = n_samples
 
-        if galaxy_params:
+        if galaxy_params is not None:
             self.galaxy_params = galaxy_params
         else:
             if galaxy_parameters_file:
