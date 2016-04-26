@@ -16,20 +16,25 @@ class SpecStacker(object):
     """
     Perform basic processing of raw spectra.
 
-    Parameters
+    Attributes
     ----------
-
-    Returns
-    -------
-
-    Examples
-    --------
-    >>>
+    galaxy_params: numpy record array
+    names: list
+    mins: list
+    maxs: list
+    stack_inds: ndarray
+    Nspectra: integer
     """
 
-    def __init__(self, selection_dict=None, columns=None):
+    def __init__(self, selection_dict=None, columns=None, galaxy_parameters_file=None,
+                 spectra_directory=None):
 
-        self.galaxy_params = get_galaxy_params(columns=columns)
+        if galaxy_parameters_file:
+            self.galaxy_params = get_galaxy_params(columns=columns, galaxy_parameters_file=galaxy_parameters_file)
+        else:
+            self.galaxy_params = get_galaxy_params(columns=columns)
+
+        self.spectra_directory = spectra_directory
 
         self.names = []
         self.mins = []
@@ -56,24 +61,34 @@ class SpecStacker(object):
         """
         Calculate mean or median stack of spectra.
 
+        May be used to process and stack spectra from .fits in a single step; otherwise, can pass arrays
+        of spectra and ivars to this function and generate a stack directly from preprocessed data.
+
         Parameters
         ----------
-        spec_array : ndarray
-            An N_spectra x N_wavelengths array containing all spectra interpolated to common,
+        spec_array: ndarray (default=None)
+            Optional. An Nspectra x Nwavelengths array containing all spectra interpolated to common,
             de-redshifted wavelength grid.
-        weights_array: ndarray
+        weights_array: ndarray (default=None)
+            Optional. Inverse variance associated with each flux measurement in spec_array.
         spec_filenames_file: string
             NB: this will ONLY work if the filenames in this file are line-by-line matched to self.galaxy_params;
             DO NOT use a selection_dict and pass a list of filenames!
-        method : string (default='mean')
+        method: string (default='mean')
             Method of stacking. Must be either 'mean' or 'median'
-        err_method : string (default='rms')
+        err_method: string (default='rms')
             Method of computing flux errors in the stacked spectrum. Must be either 'rms' or 'mcmc'
-        mcmc_samples : int
+        mcmc_samples: integer
+            Number of resamplings in the MCMC error estimate
 
         Returns
         -------
-        stack
+        wavelengths: ndarray
+            Only returned if no spectrum/weights arrays were passed to the function.
+        stack: ndarray
+            Stacked spectrum
+        errs: ndarry
+            Uncertainty in the stacked spectrum at each wavelength
         """
         if spec_filenames_file:
             filenames = read_filenames(spec_filenames_file)
@@ -86,7 +101,7 @@ class SpecStacker(object):
             spectra = spec_array
             weights = weights_array
         else:
-            sp = SpecProcessor(spectrum_filenames_file=None, filenames=filenames)
+            sp = SpecProcessor(spectrum_filenames_file=None, filenames=filenames, spectra_directory=self.spectra_directory)
             spectra, weights = sp.process_fits(indices=None, normalize=True)
             wavelengths = 10 ** sp.loglam_grid
             keep = (wavelengths > 3700) * (wavelengths < 8200)

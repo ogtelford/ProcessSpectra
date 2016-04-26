@@ -5,6 +5,7 @@ Authored by Grace Telford 02/13/16
 """
 
 # TODO: add option to save to HDF5 file to the processing function
+# TODO: add parameter descriptions to SpecProcessor, normalize, and process_fits
 
 from __future__ import absolute_import, print_function, division
 
@@ -26,11 +27,12 @@ class SpecProcessor(object):
     Nsamples: integer
     galaxy_params: numpy record array
     filenames: string, list, or ndarray
+    spectra_directory: string
     Nspectra: integer
     """
 
     def __init__(self, n_samples=5000, loglam_grid=None, galaxy_params=None,
-                 filenames=None, spectrum_filenames_file=None):
+                 filenames=None, spectrum_filenames_file=None, spectra_directory=None):
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
@@ -54,6 +56,8 @@ class SpecProcessor(object):
         if filenames is not None:
             self.filenames = filenames
 
+        self.spectra_directory = spectra_directory
+
         self.Nspectra = len(self.filenames)
 
     @staticmethod
@@ -63,14 +67,14 @@ class SpecProcessor(object):
 
         Parameters
         ----------
-        wavelength : float or ndarray
+        wavelength: float or ndarray
             Wavelength(s) at which to compute the reddening correction.
-        r_v : float (default=3.1)
+        r_v: float (default=3.1)
             R_V value assumed in reddening law.
 
         Returns
         -------
-        k : float or ndarray
+        k: float or ndarray
             Value(s) of k(lambda) at the specified wavelength(s).
         """
 
@@ -145,7 +149,7 @@ class SpecProcessor(object):
         spectra: ndarray
         weights: ndarray
         id_dict: dictionary
-            Optional.
+            Only returned if id_dict=True.
         """
         start_time = time.time()
         counter = 0
@@ -164,7 +168,10 @@ class SpecProcessor(object):
             index_list = np.arange(self.Nspectra)
 
         for ind in index_list:
-            data = FitsData(self.filenames[ind])
+            if self.spectra_directory is not None:
+                data = FitsData(self.filenames[ind], spectra_directory=self.spectra_directory)
+            else:
+                data = FitsData(self.filenames[ind])
 
             redshifts.append(data.z)
             plates.append(data.plate)
