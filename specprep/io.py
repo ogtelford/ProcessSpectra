@@ -40,14 +40,13 @@ class FitsData(object):
         andmask: ndarray
             Value of mask at each wavelength, > 0 if set in any exposure of a given galaxy
     """
-    def __init__(self, filename,
-                 spectra_directory='/Users/ogtelford/Documents/UW/Research/StackingSpectra/data/M9.8_SFR0/'):
-        if spectra_directory:
-            self.spectra_directory = spectra_directory
-        else:
-            sys.exit('Specify spectra_directory in *kwargs')
-
+    def __init__(self, filename, spectra_directory=None):
         self.filename = filename
+
+        if spectra_directory is None:
+            self.spectra_directory = './'
+        else:
+            self.spectra_directory = spectra_directory
 
         try:
             fitsfile = fits.open(self.spectra_directory + self.filename, memmap=False)
@@ -66,8 +65,7 @@ class FitsData(object):
         fitsfile.close()
 
 
-def get_galaxy_params(galaxy_parameters_file='/Users/ogtelford/Documents/UW/Research/StackingSpectra/code/data_M9.8_SFR0.csv',
-                      columns=None, indices=None):
+def get_galaxy_params(galaxy_parameters_file, columns=None, indices=None):
     """
     Read in a table of galaxy parameters.
 
@@ -90,9 +88,6 @@ def get_galaxy_params(galaxy_parameters_file='/Users/ogtelford/Documents/UW/Rese
     IOError:
         An error occurred when attempting to read the galaxy parameters .csv file.
     """
-    if galaxy_parameters_file is None:
-        sys.exit('Specify galaxy_parameters_file in *kwargs')
-
     if columns:
         try:
             galaxyparams = np.genfromtxt(galaxy_parameters_file, delimiter=',',

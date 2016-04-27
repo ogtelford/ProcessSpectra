@@ -8,7 +8,7 @@ from __future__ import absolute_import, print_function, division
 
 import numpy as np
 import sys
-from .io import get_galaxy_params, read_filenames, make_files_list
+from .io import get_galaxy_params, make_files_list
 from .processing import SpecProcessor
 
 
@@ -26,15 +26,10 @@ class SpecStacker(object):
     Nspectra: integer
     """
 
-    def __init__(self, selection_dict=None, columns=None, galaxy_parameters_file=None,
-                 spectra_directory=None):
+    def __init__(self, galaxy_parameters_file, selection_dict=None,
+                 spectra_directory=None, columns=None):
 
-        if galaxy_parameters_file:
-            self.galaxy_params = get_galaxy_params(columns=columns, galaxy_parameters_file=galaxy_parameters_file)
-        else:
-            self.galaxy_params = get_galaxy_params(columns=columns)
-
-        self.spectra_directory = spectra_directory
+        self.galaxy_params = get_galaxy_params(galaxy_parameters_file, columns=columns)
 
         self.names = []
         self.mins = []
@@ -56,7 +51,11 @@ class SpecStacker(object):
         self.galaxy_params = self.galaxy_params[self.stack_inds]
         self.Nspectra = len(self.galaxy_params)
 
-    def get_stacked_spectrum(self, spec_array=None, weights_array=None, spec_filenames_file=None,
+        self.filenames = make_files_list(self.galaxy_params, indices=None)
+
+        self.spectra_directory = spectra_directory
+
+    def get_stacked_spectrum(self, spec_array=None, weights_array=None,
                              method='mean', err_method='rms', mcmc_samples=100):
         """
         Calculate mean or median stack of spectra.
@@ -90,10 +89,6 @@ class SpecStacker(object):
         errs: ndarry
             Uncertainty in the stacked spectrum at each wavelength
         """
-        if spec_filenames_file:
-            filenames = read_filenames(spec_filenames_file)
-        else:
-            filenames = make_files_list(self.galaxy_params, indices=None)
 
         # Get array of spectra and weights (ivars)
         if spec_array:
@@ -101,7 +96,7 @@ class SpecStacker(object):
             spectra = spec_array
             weights = weights_array
         else:
-            sp = SpecProcessor(spectrum_filenames_file=None, filenames=filenames, galaxy_params=self.galaxy_params,
+            sp = SpecProcessor(filenames=self.filenames, galaxy_params=self.galaxy_params,
                                spectra_directory=self.spectra_directory)
             spectra, weights = sp.process_fits(indices=None, normalize=True)
             wavelengths = 10 ** sp.loglam_grid

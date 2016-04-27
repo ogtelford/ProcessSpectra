@@ -4,7 +4,6 @@ Tools to process galaxy spectra .fits files from SDSS-II Legacy survey.
 Authored by Grace Telford 02/13/16
 """
 
-# TODO: add option to save to HDF5 file to the processing function
 # TODO: add parameter descriptions to SpecProcessor, normalize, and process_fits
 
 from __future__ import absolute_import, print_function, division
@@ -14,7 +13,7 @@ from scipy import interp
 import time
 import sys
 
-from .io import FitsData, get_galaxy_params, read_filenames
+from .io import FitsData
 
 
 class SpecProcessor(object):
@@ -31,37 +30,22 @@ class SpecProcessor(object):
     Nspectra: integer
     """
 
-    def __init__(self, n_samples=5000, loglam_grid=None, galaxy_params=None, galaxy_parameters_file=None,
-                 filenames=None, spectrum_filenames_file=None, spectra_directory=None):
+    def __init__(self, filenames, galaxy_params, spectra_directory=None, n_samples=5000, loglam_grid=None):
+        # default SDSS .fits filenames are 25 characters long - workaround for single file case
+        if (len(galaxy_params) != len(filenames)) & (len(filenames) != 25):
+            sys.exit('filenames and galaxy_params must be same length')
+
+        self.galaxy_params = galaxy_params
+        self.filenames = filenames
+        self.Nspectra = len(self.filenames)
+        self.spectra_directory = spectra_directory
+
         if loglam_grid:
             self.loglam_grid = loglam_grid
             self.Nsamples = len(loglam_grid)
         else:
             self.loglam_grid = 3.5 + 0.0001 * np.arange(n_samples)
             self.Nsamples = n_samples
-
-        if galaxy_params is not None:
-            self.galaxy_params = galaxy_params
-        else:
-            if galaxy_parameters_file:
-                self.galaxy_params = get_galaxy_params(galaxy_parameters_file=galaxy_parameters_file)
-            else:
-                self.galaxy_params = get_galaxy_params()
-
-        # IS THERE A CLEANER WAY TO HANDLE THESE TWO POSSIBILITIES?
-
-        if spectrum_filenames_file:
-            try:
-                self.filenames = read_filenames(spectrum_filenames_file)
-            except IOError:
-                sys.exit('spectrum_filenames_file is invalid')
-
-        if filenames is not None:
-            self.filenames = filenames
-
-        self.spectra_directory = spectra_directory
-
-        self.Nspectra = len(self.filenames)
 
     @staticmethod
     def k(wavelength, r_v=3.1):
@@ -129,13 +113,15 @@ class SpecProcessor(object):
         spectra: ndarray
         weights: ndarray
         """
+        # TODO: check that mean flux in this window is nonzero!
+
         norm = np.mean(spectra[:, (10 ** self.loglam_grid > 4400.) * (10 ** self.loglam_grid < 4450.)], axis=1)
         spectra /= norm[:, None]
         weights *= norm[:, None] ** 2
 
         return spectra, weights
 
-    def process_fits(self, normalize=False, mask=False, indices=None, return_id=False):
+    def process_fits(self, normalize=False, mask=False, return_id=False, indices=None):
         """
         Iterate over all .fits filenames, read in and process spectra.
 
@@ -152,7 +138,7 @@ class SpecProcessor(object):
         spectra: ndarray
         weights: ndarray
         id_dict: dictionary
-            Only returned if id_dict=True.
+            Only returned if return_id=True.
         """
         start_time = time.time()
         counter = 0
@@ -171,10 +157,7 @@ class SpecProcessor(object):
             index_list = np.arange(self.Nspectra)
 
         for ind in index_list:
-            if self.spectra_directory is not None:
-                data = FitsData(self.filenames[ind], spectra_directory=self.spectra_directory)
-            else:
-                data = FitsData(self.filenames[ind])
+            data = FitsData(self.filenames[ind], spectra_directory=self.spectra_directory)
 
             redshifts.append(data.z)
             plates.append(data.plate)
