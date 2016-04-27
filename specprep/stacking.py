@@ -110,6 +110,7 @@ class SpecStacker(object):
 
         # Perform stacking of spectra
         spectra[spectra == 0] = np.nan
+        spectra[np.isinf(spectra)] = np.nan
 
         if method == 'mean':
             stack = np.nanmean(spectra, axis=0)
@@ -144,6 +145,8 @@ class SpecStacker(object):
 
         else:
             sys.exit('err_method keyword must be either "rms" or "mcmc"')
+
+        import pdb; pdb.set_trace()
 
         if wavelengths is not None:
             return wavelengths, stack, errs

@@ -31,8 +31,8 @@ class SpecProcessor(object):
     """
 
     def __init__(self, filenames, galaxy_params, spectra_directory=None, n_samples=5000, loglam_grid=None):
-        # default SDSS .fits filenames are 25 characters long - workaround for single file case
-        if (len(galaxy_params) != len(filenames)) & (len(filenames) != 25):
+        # NB: THIS DOES NOT WORK FOR A SINGLE GALAXY! assumes more than one.
+        if len(galaxy_params) != len(filenames):
             sys.exit('filenames and galaxy_params must be same length')
 
         self.galaxy_params = galaxy_params
