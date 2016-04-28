@@ -147,7 +147,7 @@ class SpecStacker(object):
             sys.exit('err_method keyword must be either "rms" or "mcmc"')
 
         if np.sum(errs) == 0:
-            errs = 1. / np.sqrt(weights)  # workaround to handle the case where there's only one spectrum
+            errs = 1. / np.sqrt(weights[0])  # workaround to handle the case where there's only one spectrum
 
         if wavelengths is not None:
             return wavelengths, stack, errs
