@@ -180,9 +180,6 @@ def save_spectra_hdf5(wavelength_grid, spectra, weights, output_filename='spectr
         Optional. Dictionary where keys are additional dataset names and values are additional data to store
         in the HDF5 file.
     """
-    if output_filename is None:
-        sys.exit('Specify output_filename in *kwargs')
-
     f = h5py.File(output_filename, 'w')
 
     f.create_dataset('wavelengths', data=wavelength_grid)
@@ -234,3 +231,39 @@ def save_spectrum_starlight(wavelength_grid, spectrum, errors, minlam=3700, maxl
         data[:, 3] = interp(lam_grid, wavelength_grid, flags, left=0., right=0.)
 
     np.savetxt(output_filename, data)
+
+def save_stack_hdf5(wavelengths, fluxes, errors, indices, dataset_dict=None, output_filename='stack.hdf5'):
+    """
+    Save wavelengths, fluxes, errors, and indices of galaxies used to build stack to an HDF5 file.
+
+    Can specify additional dataset names and data using the dataset_dict keyword.
+    Useful for storing identifying information for spectra -- Plates, MJDs, Fibers
+
+    Parameters
+    ----------
+    wavelengths: ndarray
+        n_samples length array, common wavelength grid corresponding to flux measurements for all spectra
+    fluxes: ndarray
+        n_spectra x n_samples array, where each row is the spectrum for a given galaxy
+    errors: ndarray
+        n_spectra x n_samples array, where each row is the inverse variance at each wavelength for a given galaxy
+    indices: ndarray
+        Indices of galaxies used to build the stacked spectrum
+    dataset_dict: dictionary
+        Optional. Dictionary where keys are additional dataset names and values are additional data to store
+        in the HDF5 file.
+    output_filename: string
+        HDF5 filename where the arrays are to be stored.
+    """
+    f = h5py.File(output_filename, 'w')
+
+    f.create_dataset('wavelengths', data=wavelengths)
+    f.create_dataset('fluxes', data=fluxes)
+    f.create_dataset('errors', data=errors)
+    f.create_dataset('indices', data=indices)
+
+    if dataset_dict:
+        for name in dataset_dict.keys():
+            f.create_dataset(name, data=dataset_dict[name])
+
+    f.close()
