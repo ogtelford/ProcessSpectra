@@ -101,7 +101,7 @@ def get_galaxy_params(galaxy_parameters_file, columns=None, indices=None):
         except IOError:
             sys.exit('Invalid galaxy_parameters_file')
 
-    if indices:
+    if indices is not None:
         return galaxyparams[indices]
     else:
         return galaxyparams
