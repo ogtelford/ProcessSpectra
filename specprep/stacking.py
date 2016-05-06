@@ -150,7 +150,9 @@ class SpecStacker(object):
             errs = 1. / np.sqrt(weights[0])  # workaround to handle the case where there's only one spectrum
 
         stack[np.isnan(stack)] = 0.
-        errs[np.isnan(errs)] = np.nanmax(errs)  # again, workaround to ensure no NaNs are in output spectrum/errors
+        stack[np.isinf(stack)] = 0.
+        errs[np.isnan(errs)] = np.nanmax(errs[~np.isinf(errs)])  # again, workaround to ensure no NaNs are in output spectrum/errors
+        errs[np.isinf(errs)] = np.nanmax(errs[~np.isinf(errs)])
 
         if wavelengths is not None:
             return wavelengths, stack, errs
