@@ -43,7 +43,7 @@ class SpecStacker(object):
         keep = np.ones(len(self.galaxy_params), dtype=bool)
 
         for ind in range(len(self.names)):
-            keep *= (self.galaxy_params[self.names[ind]] < self.maxs[ind]) * \
+            keep *= (self.galaxy_params[self.names[ind]] <= self.maxs[ind]) * \
                     (self.galaxy_params[self.names[ind]] > self.mins[ind])
 
         self.stack_inds = np.where(keep > 0)[0]
